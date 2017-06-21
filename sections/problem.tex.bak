@@ -1,0 +1,14 @@
+\section{Problems caused by extremely shallow buffer}\label{sec:problem}
+In this section, we show that, in extremely shallow-buffered high-speed DCNs, existing TCP/ECN solutions use switch buffers either (1) too aggressively, thus causing excessive packet losses at high loads ($\S\ref{subsec:buffer-aggressive}$) or (2) too conservatively, thus seriously degrading throughput at low loads ($\S\ref{subsec:buffer-conservative}$).
+
+\subsection{Standard ECN configuration causes excessive packet losses}\label{subsec:buffer-aggressive}
+Most DCN transports~\cite{dctcp,tuning,d2tcp,l2dct} leverage ECN to achieve high throughput with little buffering. To achieve 100\% throughput, operators need to configure a moderate marking threshold (\eg, $C\times RTT \times \lambda$). To the best of our knowledge, this is current operation practice in many production DCNs. However, the standard ECN configuration is likely to overfill extremely shallow buffers when many ports are congested simultaneously, thus causing excessive packet losses and poor performance for small flows.
+
+We take Broadcom Tomahawk with 16MB buffer and 32 100Gbps ports as an example. If TCP desires 1MB ($100Gbps\times 80\mu s$) marking threshold per port, the buffer will be overfilled when more than half of the total ports are congested. What is worse, Tomahawk has 4 switch cores to achieve desired performance at the high-speed. Each core has its own MMU and 4MB buffer~\cite{tomahawk_buffer1,tomahawk_buffer2} and dynamic buffer sharing only happens within the single core. Therefore, the buffer of a Broadcom Tomahawk chip will be overfilled when more than 4 ports attached to a single core are congested simultaneously.
+
+\subsection{Conservative ECN configuration degrades throughput}\label{subsec:buffer-conservative}
+Realizing the above limitation, a straight forward solution is to configure a lower marking threshold (\eg, $\leq$ average per-port buffer), thus leaving headroom to reduce packet losses. However, this conservative ECN configuration causes much \emph{unnecessary} bandwidth wastage when few ports are congested simultaneously. For example, when only a single switch port is congested, this method still throttles TCP throughput despite the sufficient switch buffer resource.
+
+
+
+

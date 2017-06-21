@@ -1,0 +1,36 @@
+\section{Problem Exploration}\label{sec:problem}
+In this section, we begin by showing that the switch buffer is more and more scarce with the increase of link speeds in datacenters. Then, we demonstrate various performance impairments in high-speed datacenter networks with extremely shallow-buffered switches.
+
+\subsection{Scarce Switch Buffer}
+As previous work~\cite{dctcp} shows, there is typically a small number of concurrent large TCP flows competing at the same switch port. To achieve 100\% link utilization, these TCP large flows desire at least $C\times RTT \times \lambda$ buffer at the congested port, where $C$ is the link capacity, $RTT$ is the average round-trip time and $\lambda$ is determined by the TCP congestion control algorithm at the end host. In recent years, link speeds in production datacenters have increased greatly, from 1Gbps to 40Gbps and now to 100Gbps~\cite{facebook-nextgen}. However, the base TCP latency does not change much as it is mainly determined by processing latency at the end host. As a result, the buffer demand of TCP almost increases in proportion to the link speed.
+
+We use testbed experiments to measure the buffer remand of conventional TCP stacks in 100Gbps networks. In our testbed, three \emph{idle} servers with near zero CPU utilization are connected to a Arista 7060CX-32S-F switch. Each server is a Dell PowerEdge R730 with 2 16-core Intel Xeon E5-2698 2.3GHz CPUs, 256GB RAM and 1 Mellanox ConnectX-4 100Gbps NIC. All servers run Linux 3.10.0 kernel. To reduce system overhead, various offloading techniques, such as TCP segmentation offload (TSO) and generic receive offload (GRO) are enabled by default. The base latency of our testbed is around 30$\mu$s. We generate 16 TCP long-lived flows using \texttt{iperf} from two senders to a receiver and measure the aggregate throughput at the receiver side. We consider two representative datacenter transport protocols, DCTCP~\cite{dctcp} and ECN$^{*}$~\cite{tuning} (regular ECN-enabled TCP which simply cuts window by half in the presence of a ECN mark).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.9\linewidth]{figs/throughput_ecn_threshold.eps}
+  \caption{[Testbed] TCP throughput}\label{fig:throughput_ecn_thresh}
+\end{figure}
+
+Figure~\ref{fig:throughput_ecn_thresh} shows the throughput results with different ECN marking thresholds at the switch. With low  
+
+
+
+However, the buffer size of commodity switching chips does not increase much as expected. We list buffer and capacity information of some widely-used commodity switching chip in Table~\ref{tab:chip_buffer}.
+
+\begin{table*}[t]
+\centering
+\begin{tabular}{|l|l|l|l|l|}
+\hline
+ASIC & Broadcom \wei{TBD} & Broadcom Trident+ & Broadcom Trident \uppercase\expandafter{\romannumeral2}~\cite{broadcom-trident2-56850} & Broadcom Tomahawk~\cite{broadcom-tomahawk} \\\hline
+Capacity (ports $\times$ BW) & 48 p $\times$ 1 Gbps & 48 p $\times$ 10 Gbps & 32 p $\times$ 40 Gbps & 32 p $\times$ 100 Gbps \\\hline
+Total buffer             & 4MB   & 9MB  & 12MB & 16MB \\\hline
+Buffer per port          & 85KB  & 192KB  & 384KB & 512KB \\\hline
+Buffer per port per Gbps & 85KB  & 19.2KB & 9.6KB & 5.12KB \\\hline
+\end{tabular}
+\caption{Buffer and capacity information of some commodity switching chips.}
+\label{tab:chip_buffer}
+\end{table*}
+
+
+\subsection{Understanding Performance Impairments}  

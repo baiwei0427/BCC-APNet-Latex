@@ -1,0 +1,189 @@
+\documentclass[10pt, sigconf]{acmart}
+
+\usepackage{booktabs} % For formal tables
+
+\usepackage{url}
+%\usepackage[sort,space]{cite}
+\usepackage{tabularx}
+%\usepackage{algorithm2e}
+\usepackage[ruled,vlined]{algorithm2e}
+\usepackage{algpseudocode}
+\usepackage{amsmath}
+\usepackage{mathtools}
+\newtheorem{mydef}{Definition}
+\usepackage{rotating}
+\usepackage{wrapfig}
+\usepackage{times}
+\long\def\comment#1{}
+\usepackage{multirow}
+\usepackage{lscape}
+\usepackage{stmaryrd}
+\usepackage{wrapfig}
+\usepackage{hhline}
+\usepackage{textcomp,booktabs}
+\usepackage{epstopdf}
+
+\usepackage{graphicx}
+\usepackage{subfig}
+\usepackage[font=bf]{caption}
+
+%\usepackage[draft]{hyperref}
+\usepackage{hyperref}
+
+\hypersetup{
+  pdfstartview=FitH,
+  pdfpagelayout=SinglePage,
+  colorlinks=true,      % false: boxed links; true: colored links
+  linkcolor=blue,       % color of internal links
+  citecolor=magenta,    % color of links to bibliography
+  filecolor=cyan,       % color of file links
+  urlcolor=red          % color of external links
+}
+
+\usepackage{array}
+\newcolumntype{L}[1]{>{\raggedright\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\newcolumntype{C}[1]{>{\centering\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+
+\newcommand{\bbR}{\mathbb{R}}
+\newcommand{\calN}{\mathcal{N}}
+\newcommand{\calR}{\mathcal{R}}
+\newcommand{\calV}{\mathcal{V}}
+\newcommand{\eg}{{\it e.g.}}
+\newcommand{\etal}{{\it et al.~}}
+\newcommand{\etc}{{\it etc.}}
+\newcommand{\ie}{{\it i.e.}}
+\newcommand{\tablecapspace}{{\vspace{-0.1in}}}
+\newcommand{\tablespace}{{\vspace{-0.05in}}}
+\newcommand{\picspace}{{\vspace{-0.1in}}}
+\renewcommand{\baselinestretch}{1}
+\renewcommand{\arraystretch}{1.05}      % make the space between tabular lines larger
+\newcommand{\capspace}{}           % control space between figure/table and caption
+
+\def\TODO#1{\textcolor{red}{#1}}
+
+
+\newcommand{\sys}{{\textsc{BCC}}\xspace}
+
+
+\newcommand{\paragraphb}[1]{\vspace{0.05in}\noindent{\bf #1}}
+
+\newcommand{\paraspace}{\vspace{0.05in}}
+\newcommand{\parab}[1]{\paraspace\noindent{\bf #1} }
+\newcommand{\parae}[1]{\paraspace\noindent{\em #1} }
+\newcommand{\parabe}[1]{\paraspace\noindent{\bf \em #1} }
+\newcommand{\kai}[1]{{\color{red}[kai: #1]}}
+\newcommand{\wei}[1]{{\color{red}[wei: #1]}}
+
+\def\naive{na\"\i ve}
+
+
+\newcommand{\tabincell}[2]{\begin{tabular}{@{}#1@{}}#2\end{tabular}}
+
+\newcommand{\subcaption}[1]{\centerline{#1}\vspace{0.1in}}
+\long\def\comment#1{}
+
+
+\newenvironment{icompact}{
+  \begin{list}{$\bullet$}{
+    \parsep 1pt plus 1pt
+    \partopsep 1pt plus 1pt
+    \topsep 1pt plus 2pt minus 1pt
+    \itemsep 1.5pt plus 1pt
+    \parskip 0pt plus 2pt
+    \leftmargin 0.15in}
+       }
+  {\normalsize\end{list}}
+
+\newenvironment{ecompact}{
+  \begin{list}{$\bullet$}{
+    \parsep 1pt plus 1pt
+    \partopsep 1pt plus 1pt
+    \topsep 1pt plus 2pt minus 1pt
+    \itemsep 1.5pt plus 1pt
+    \parskip 0pt plus 2pt
+    \leftmargin 0.15in}
+       }
+  {\normalsize\end{list}}
+
+
+
+
+
+
+\begin{document}
+
+\copyrightyear{2017}
+\acmYear{2017}
+\setcopyright{acmcopyright}
+\acmConference{APNet'17}{August 03-04, 2017}{Hong Kong, China}\acmPrice{15.00}\acmDOI{10.1145/3106989.3107003}
+\acmISBN{978-1-4503-5244-4/17/08}
+
+\title{Congestion Control for High-speed Extremely\\Shallow-buffered Datacenter Networks}
+
+
+\author{Wei Bai}
+\affiliation{%
+  \institution{HKUST}
+}
+
+\author{Kai Chen}
+\affiliation{
+  \institution{HKUST}
+}
+
+\author{Shuihai Hu}
+\affiliation{%
+  \institution{HKUST}
+}
+
+
+
+\author{Kun Tan}
+\affiliation{%
+  \institution{Huawei}
+}
+
+\author{Yongqiang Xiong}
+\affiliation{%
+  \institution{Microsoft Research}
+}
+
+
+\renewcommand{\shortauthors}{W. Bai et al.}
+\renewcommand{\textrightarrow}{$\rightarrow$}
+
+\begin{abstract}
+\input{sections/abstract.tex}
+\end{abstract}
+
+\begin{CCSXML}
+<ccs2012>
+<concept>
+<concept_id>10003033.10003106.10003110</concept_id>
+<concept_desc>Networks~Data center networks</concept_desc>
+<concept_significance>500</concept_significance>
+</concept>
+</ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Networks~Data center networks}
+
+\keywords{Data center networks, Buffer, ECN, TCP}
+
+\maketitle
+
+\input{sections/introduction.tex}
+\input{sections/background.tex}
+\input{sections/problem.tex}
+\input{sections/design.tex}
+\input{sections/evaluation.tex}
+\input{sections/related.tex}
+\input{sections/conclusion.tex}
+
+
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{reference}
+
+\end{document}

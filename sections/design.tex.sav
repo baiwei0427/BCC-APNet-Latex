@@ -1,0 +1,140 @@
+\section{Solution}\label{sec:design}
+\subsection{Design Goals}\label{subsec:design_goals}
+We seek to achieve both high throughput and low packet loss rate simultaneously. However, as shown in $\S\ref{sec:problem}$, the scarce buffer resource in high-speed switching chip makes it difficult to achieve both metrics when many ports are active simultaneously. When a conflict arises between the two metrics, we prefer to keep low packet loss rate at the cost of sacrificing a small amount of throughput. This is because the bandwidth is generally plentiful in datacenters, while a small increase in packet loss rate (\eg, $\geq0.1\%$) can seriously degrade the application performance and in turn, operator revenue~\cite{timely}.
+
+Furthermore, our solution should work with existing commodity switches and be backward compatible with legacy network stacks. Modifying switch hardware is especially problematic as a new switch ASIC typically takes years to design and implement.
+
+%After the above problem exploration, we mainly have following two takeaways:
+
+%\begin{ecompact}
+%\item Given the scarce buffer resource in high-speed switching chiP, we \emph{cannot guarantee} both high throughput (full link utilization) and low packet drop rate in \emph{in all scenarios}. \textbf{Hence, when the switch does not have enough buffers, we should make a trade-off choice between two goals.}
+
+    %For example, traditional throughput-centric buffer hungry datacenter transports, such as standard DCTCP and ECN$^{*}$, exhaust switch buffers at high loads, thus causing excess packet losses and degrading performance of small flows.
+
+%\item However, the above takeaway does not imply that we are always impossible to achieve both goals. For example, the switch is likely to have enough buffers to achieve both goals when few ports are congested. \textbf{Hence, if the switch has enough buffer space, we should still make best efforts to achieve both goals.}
+    %But bufferless transports, such as DCTCP with a low marking threshold, still unnecessarily trade throughput to lower buffer pressures in such scenarios.
+%\end{ecompact}
+
+%Motivated by above takeaways, we aim to propose a solution with the following properties:
+%\begin{ecompact}
+%\item \textbf{Low packet drop rate:} Under any circumstance, our solution should maintain low packet drop rate. We prioritize low packet drop rate over high throughput as it directly affects user-perceived experience, and in turn, operator revenue.
+%\item \textbf{Best-effort high throughput:} On the base of low packet drop rate, if the switch has enough buffers, we should utilize them to achieve high throughput (full link utilization).
+%\item \textbf{Readily-deployable:} Our solution must work with existing commodity switches in the network and be backward compatible with legacy TCP/IP stacK at the end host.
+%\end{ecompact}
+
+\subsection{\sys Overview}
+We first introduce the key idea of \sys. \sys keeps conventional datacenter transports~\cite{dctcp,tuning} at the end host but performs \emph{buffer-aware} ECN marking at the switch. When the total switch buffer usage is low, \sys marks packets following standard ECN configuration ($\S\ref{subsec:buffer-aggressive}$) to achieve both high throughput and low packet loss rate. When the total buffer usage is high, \sys marks packets more aggressively to trade certain throughput for low packet loss rate.
+
+The reader may think that \sys requires non-trivial switch hardware modifications to track the buffer usage and make buffer-aware decisions. However, as we will show in $\S\ref{subsec:mechanism}$, \sys is extremely simple and only requires one more ECN configuration at the commodity switch.
+
+%The extra ECN feature required by \sys is widely supported by existing commodity switching chip ($\S\ref{subsec:experiments}$).
+
+%The goal of \sys is to adaptively balance two important goals: low packet drop rate and high throughput. Only when the switch does not have enough buffers, does \sys explicitly trade some throughput for low packet drop rate.
+
+%To achieve the above goal, \sys tracK the dynamic aggregate buffer requirement of traffic from all the ports at the switch side. If the switch has enough buffers to satisfy this requirement, \sys does not take any further action. Otherwise, \sys immediately notifies end hosts using ECN marK to throttle TCP sending rates, thus leaving enough buffer headroom to keep low packet drop rate. \sys is essentially a buffer-aware ECN/AQM at the switch and can cooperate with any ECN-aware TCP variant at the end host.
+\begin{table}[t]
+\centering
+\begin{tabular}{|C{1.5cm}|C{6cm}|}
+\hline
+Parameter & Description\\ \hline
+$B$ &  Switch shared buffer size\\ \hline
+$N$ &  Total number of switch egress queues \\ \hline
+$C$ &  Capacity of the switch queue \\ \hline
+$RTT$ & Base round-trip time \\ \hline
+$\alpha$ & Parameter for shared buffer allocation\\ \hline
+$B_{R}$ & Minimum per-queue required buffer for high throughput and low packet loss rate\\ \hline
+$K_{min}$ & Minimum marking threshold for shared buffer ECN/RED\\ \hline
+$K_{max}$ & Maximum marking threshold for shared buffer ECN/RED\\ \hline
+$P_{max}$ & Maximum marking probability for shared buffer ECN/RED\\ \hline
+$h$ & See Equation~\ref{eq:k_min}\\ \hline
+\end{tabular}
+\caption{Shared buffer model parameters}\label{tab:parameter}
+\end{table}
+\begin{table}[t]
+\centering
+\begin{tabular}{|C{1.5cm}|C{6cm}|}
+\hline
+Variable & Description\\ \hline
+$t$ & Time\\ \hline
+$Q_{i}(t)$ & Length of switch queue $i$ at time $t$\\ \hline
+$T(t)$ & Queue length control threshold at time $t$\\ \hline
+\end{tabular}
+\caption{Shared buffer model variables}\label{tab:variable}
+\end{table}
+
+\subsection{\sys Mechanism}\label{subsec:mechanism}
+We now describe the mechanism of \sys in detail. We model the switch as a shared-buffer output-queued switch. Variables and parameters used in the model are listed in Table~\ref{tab:parameter} and~\ref{tab:variable}. We start from the simplest assumption that each switch port only contains a single egress queue\footnote{In $\S\ref{subsec:mechanism}$ and $\S\ref{subsec:parameter}$, we use queue and port interchangeably. We further discuss the impact of multiple queues per port in $\S\ref{subsec:discussion}$.} and no buffer is reserved for each queue. Hence, all buffers are dynamically allocated from a single shared buffer pool. The switch has $B$ (shared) buffer space and $N$ egress queues in total. An ECN-based transport protocol~\cite{dctcp,tuning} is enabled at the end host. The standard ECN setting has been configured on each port/queue to achieve 100\% throughput.
+
+To the best of our knowledge, today's commodity switching chip (especially those from Broadcom) typically use Dynamic Threshold (DT) algorithm~\cite{dt} for dynamic buffer allocation. The shared buffer allocated to a queue is controlled by a parameter $\alpha$. At time $t$, the MMU will compute a threshold $T(t)$ to limit the queue length. $T(t)$ is actually a function of the unused shared buffer size and $\alpha$ as follows:
+\begin{equation}
+T(t)=\alpha\times(B-\displaystyle\sum_{i=1}^{N} Q_{i}(t))\label{eq:dt}
+\end{equation}
+A packet arriving in queue $i$ at time $t$ will get dropped if $Q_{i}(t)\geq T(t)$. As analyzed in~\cite{dt}, if there are $M$ active queues, each queue can get $\alpha\times B/(1+M\times \alpha)$ buffer space. Obviously, the more active queues we have, the fewer buffer space each queue can get from the shared pool. Moreover, a large $\alpha$ can help a queue get more buffer space to absorb transient bursts. But a too large $\alpha$ can cause short-term imbalanced buffer allocation. In switching chips, $\alpha$ values are typically powers of two for hardware implementation simplicity (\eg, 1/128 to 8 in Broadcom Tomhawk).
+
+We assume that our transport protocol (with standard ECN configuration) requires at least $B_R$ buffer space per queue to achieve both high throughput and low packet loss rate. We simply treat $B_R$ as a known constant here and show how to determine $B_R$ later in $\S\ref{subsec:parameter}$. When $T(t) > B_R$, it means that the switch has sufficient buffer space to achieve both goals simultaneously. Hence, \sys just marks packets following the standard ECN configuration without degrading throughput.
+
+When $T(t) \leq B_R$, it indicates that the shared buffer pool is highly utilized by many concurrently active ports. In such scenarios, only relying on standard ECN configuration may cause excessive packet losses as analyzed in $\S\ref{subsec:buffer-aggressive}$. Hence, \sys throttles the shared buffer occupancy to avoid excessive packet losses. By Equation~\ref{eq:dt} and $T(t)\leq B_R$, we derive that
+\begin{equation}
+\displaystyle\sum_{i=1}^{N} Q_{i}(t)\geq B-B_{R}/\alpha\label{eq:shared_buffer}
+\end{equation}
+Here $\displaystyle\sum_{i=1}^{N} Q_{i}(t)$ is the occupancy of the shared buffer pool at time $t$, and $B$, $B_{R}$ and $\alpha$ are all known parameters. This implies that, to prevent excessive packet losses, \sys should throttle the shared buffer occupancy from exceeding a static threshold $B-B_{R}/\alpha$.
+
+To realize this, we leverage the shared buffer ECN/RED functionality which has been widely supported in commodity switching chips~\cite{arista_ecn,cisco_ecn,mqecn}. Shared buffer ECN/RED follows the original RED algorithm~\cite{RED} but tracks the buffer occupancy of a shared buffer pool (rather than a port or queue) to mark packets. Note that all transmitted packets in the shared buffer pool can get marked regardless of their ingress/egress ports and queues. Therefore, shared buffer ECN/RED can effectively control shared buffer occupancies. Moreover, shared buffer ECN/RED can be used in combination with other ECN/AQM configurations at the switch. When there are several ECN configurations enabled, a packet gets marked if anyone decides to mark it first.
+
+\parab{Summary:}\sys is built on top of existing datacenter transport protocols~\cite{dctcp,tuning,d2tcp} at the end host and per-port standard ECN configuration at the switch (current practice). It further enables shared buffer ECN/RED at the switch to achieve buffer-aware congestion control.
+\begin{icompact}
+\item When few ports are active, the shared buffer resource is abundant and per-port standard ECN configuration will take effect first to strike the balance of high throughput and low latency as before~\cite{dctcp}. Both high throughput and low packet loss rate can be achieved.
+\item When more and more ports become congested, the shared buffer resource turns scarcer. Shared buffer ECN/RED will be automatically triggered first to prevent packet losses at the cost of sacrificing a small amount of bandwidth.
+\end{icompact}
+
+\subsection{Parameter Selection}\label{subsec:parameter}
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.9\linewidth]{figs/port_qlen_cdf.png}
+  \caption{[Simulation] CDF of buffer occupancies of the congested port at 90\% load.}\label{fig:port_qlen_cdf}
+\end{figure}
+
+We now derive several parameters for \sys. First, we determine $B_R$, the minimum per-queue (port) buffer size for both high throughput and low packet loss rate. With $B_R$ fixed, we then decide marking thresholds and probability of shared ECN/RED. Note that in this section we give several useful rules-of-thumb to set parameters while leaving optimal parameter settings for future work.
+
+\parab{Determine $B_R$:}Statistics has shown that there are typically a small number of concurrent large flows to the same receiver in production datacenters~\cite{dctcp}. Hence, we start from a simple scenario where several synchronized long-lived flows share a bottleneck link. In such scenario, we need $C\times RTT\times \lambda$ buffering for each port to achieve 100\% throughput, where $\lambda$ is a characteristic constant of the congestion control algorithm.
+
+However, the lag in ECN control loop imposes extra buffer requirement to avoid packet losses. When a packet gets ECN marked at switch egress\footnote{Modern shared buffer switches mark packets using RED at egress side~\cite{ecn_or_delay}.}, the sender will reduce its window after one $RTT$. During this $RTT$ interval, extra buffer space is required to absorb the queue increase. We assume that the receiver acknowledges every MTU-sized data packet. Hence, the interval between two consecutive ACK packets is $MTU/C$. We consider the most challenging TCP slow start phase. In each 
+As an ACK packet can trigger two MTU-sized data packets in slow start phase, the aggregate sending rate reaches $2C$ and the switch queue gradient is $C$. Therefore we need $C\times RTT$ extra buffer space to avoid packet losses and $C\times RTT\times (1+\lambda)$ buffer space in total to achieve both goals.
+
+We next consider a complex scenario that a mix of small and large flows arrive and leave dynamically. As flows with different sizes arrive at different times, it is less likely that all active flows enter slow start phase simultaneously, thus reducing the switch queue gradient. But the arrivals and departures of flows also affect the switch queue gradient, which is hard to model. Hence, we run a ns2 simulation instead. In this simulation, 31 senders generate traffic to the same receiver according to the web search workload. The average link utilization is 90\%. We increase the shared buffer size to 10MB, which eliminates packet loss in the network. The other settings are same as those in $\S\ref{subsec:simulation_validation}$. We configure the per-port ECN/RED marking threshold to 720KB ($C\times RTT\times \lambda$). Hence, $C\times RTT\times (1+\lambda)$ equals to 1720KB in our simulation. Figure~\ref{fig:port_qlen_cdf} plots the CDF of buffer occupancies of the congested port. Around 25\% occupancies are larger than 720KB, suggesting that $C\times RTT\times\lambda$ is not enough. The 99.99th percentile buffer occupancy is 1609KB, which is smaller than $C\times RTT\times(1+\lambda)$. Hence, we envision that $C\times RTT\times (1+\lambda)$ also works well for mixes of small and large flows.
+
+In summary, we recommend setting $B_R$ to $C\times RTT\times (1+\lambda)$. As $C$ and $\lambda$ are both known and $RTT$ can be measured~\cite{pingmesh,tuning} in production datacenters, operators can easily compute the value of $B_R$.
+
+\parab{Determine parameters for shared buffer ECN/RED:}We leverage shared buffer ECN/RED to prevent the shared buffer occupancy from exceeding $B-B_{R}/\alpha$. To achieve fast reaction to bursty traffic, we mark packets based on the instantaneous buffer occupancy. Shared buffer ECN/RED has 3 parameters to configure: minimum threshold $K_{min}$, maximum threshold $K_{max}$ and maximum probability $P_{max}$. When the buffer occupancy is: 1) below $K_{min}$, no packet is marked; 2) between $K_{min}$ and $K_{max}$, packets are marked according to a probability; 3) exceeds $K_{max}$, all packets get marked.
+
+Based on DCTCP~\cite{dctcp}, our first choice is to set $K_{min}=K_{max}\leq B-B_{R}/\alpha$, in which we only need to determine a single marking threshold. However, with such cut-off setting, we find all flows sharing a buffer pool are likely to reduce their window at the same time, resulting in global synchronization problem and a further loss of throughput~\cite{RED}. We also confirm this problem in our simulations ($\S\ref{subsubsec:probabilistic}$).
+
+Therefore, we decided to perform a probabilistic marking by setting $K_{min}<K_{max}=B-B_{R}/\alpha$.
+%As analyzed before, when the buffer occupancy exceeds $K_{max}=B-B_{R}/\alpha$, packets are likely to get dropped. Hence, we should mark each packet to reduce the shared buffer occupancy immediately despite the loss of throughput due to synchronization problem.
+%When the buffer occupancy is between $K_{min}$ and $K_{max}$, packets are marked according to a probability.
+The key here is to control the range between $K_{min}$ and $K_{max}$. A too small $K_{max}-K_{min}$ will make buffer occupancy regularly ramp up beyond $K_{max}$, still causing global synchronization and even packet losses. As original RED work~\cite{RED} suggests, $K_{max}-K_{min}$ should be made sufficiently large (\eg, larger than typical increase in the shared buffer occupancy during a RTT) to avoid global synchronization. Hence, the choice of $K_{max}-K_{min}$ depends on both the number of ports $N$ and link capacity $C$. In \sys, we set $K_{min}$ as follows:
+\begin{equation}
+\displaystyle K_{min}=B-B_{R}/\alpha-C\times N\times h\label{eq:k_min}
+\end{equation}
+where $h$ is a parameter to control $K_{max}-K_{min}$. In our evaluation, we set $h$ to 8$\mu$s and find that \sys is robust for a range of $h$ ($\S\ref{subsubsec:sensitivity}$).
+For the maximum marking probability $P_{max}$, we set it to 10\% following the guideline in~\cite{RED}.
+
+\subsection{Discussion}\label{subsec:discussion}
+\parab{Fairness:}\wei{TBA}
+
+\parab{Multiple MMUs:}In $\S\ref{subsec:mechanism}$, we simply assume that there is only a single shared buffer pool. Some switching chips (\eg, Broadcom Tomahawk) have multiple MMUs and dynamic buffer allocation only happens within the single MMU. \sys also takes effect in such architecture as the shared buffer ECN/RED operates in a per-MMU manner. Each MMU has its own shared buffer ECN/RED and only marks its own packets based on its own shared buffer occupancy (see validation in $\S\ref{subsec:experiments}$).
+
+\parab{Impact of different $\alpha$ values:}Each switch egress port has multiple (\eg, 4 to 8) queues for traffic isolation and scheduling. To provide differentiated network services, operators may configure different $\alpha$ values for different queues.
+
+When there are different $\alpha$ values, we can choose the minimum value $\alpha_{min}$ among them and update shared buffer ECN/RED parameters as follows: $K_{max}=B-B_{R}/\alpha_{min}$, $K_{min}=B-B_{R}/\alpha_{min}-C\times N\times h$.
+
+\parab{Impact of static reserved buffers:}In $\S\ref{subsec:mechanism}$, we simply assume that all buffers are dynamically allocated. In practice, each egress queue has a small amount of static reserved buffer by default. Operators can also configure different reserved buffer sizes for different queues based on their importances.
+
+When both static reserved buffers and dynamic shared buffers exist, the MMU first tries to use static reserved buffers. Therefore, we should reduce $B_R$, the minimum per-queue shared buffer size for both high throughput and low packet loss rate, to incorporate the static reserved buffer into \sys. Let $S_{min}$ denote the minimum static buffer size reserved for a single queue. Our recommended value for $B_R$ should become $C\times RTT\times (1+\lambda)-S_{min}$
+
+\parab{Cooperation with delay-based transports:}In this paper, we focus on ECN-based transports due to their wide deployments in production datacenters~\cite{morgan-dctcp,jupiter}. We notice that there are some research efforts on delay-based transports~\cite{timely,dx} in datacenters. Similar to ECN-based transports, delay-based transports also require moderate switch buffering in the network to achieve high throughput. Therefore, they also suffer from performance impairments in $\S\ref{sec:problem}$.
+
+\sys can be used in cooperation with delay-based transports as long as they are enabled to react to ECN marks. Such cooperation demonstrates an interesting combination of ECN and delay signals: delay is used to achieve low queueing in the end-to-end path while ECN is used to achieve low packet loss rate in each hop.
+
+
+
